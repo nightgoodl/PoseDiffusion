@@ -5,10 +5,9 @@ exp_name: exp001_test
 
 
 test:
-    # Please Specify Your Own Path
-    CO3D_DIR: "/datasets01/co3dv2/080422/"
-    CO3D_ANNOTATION_DIR: "/fsx-repligen/jianyuan/datasets/co3d_relpose/"
-    resume_ckpt: "/data/home/jianyuan/src/PoseDiffusion/pose_diffusion/tmp/co3d_model_Apr16.pth"
+    CO3D_DIR: "/data1/yingbo/co3d_data/"               # 图像数据目录
+    CO3D_ANNOTATION_DIR: "/data1/yingbo/co3d_annotations/"  # 注释数据目录
+    resume_ckpt: "/data1/yingbo/co3d_model_Apr16.pth"
     
     random_order: True
     num_frames: 10

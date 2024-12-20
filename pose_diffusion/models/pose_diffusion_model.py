@@ -77,6 +77,7 @@ class PoseDiffusionModel(nn.Module):
         self,
         image: torch.Tensor,
         gt_cameras: Optional[CamerasBase] = None,
+        mid_camera: Optional[CamerasBase] = None,  # 中间相机参数
         sequence_name: Optional[List[str]] = None,
         cond_fn=None,
         cond_start_step=0,
@@ -125,7 +126,51 @@ class PoseDiffusionModel(nn.Module):
 
             return diffusion_results
         else:
-            B, N, _ = z.shape
+            if mid_camera is None:
+                raise ValueError("mid_camera must be provided during inference.")
+            
+            #encode the mid camera
+            pose_encoding_mid = camera_to_pose_encoding(mid_camera, pose_encoding_type=self.pose_encoding_type)
+            if batch_repeat > 0:
+                pose_encoding_mid = pose_encoding_mid.reshape(batch_num * batch_repeat, -1, self.target_dim)
+                z = z.repeat(batch_repeat, 1, 1)
+            else:
+                pose_encoding_mid = pose_encoding_mid.reshape(batch_num, -1, self.target_dim)
+
+            if pose_encoding_mid.shape[1] != z.shape[1]:
+                pose_encoding_mid = pose_encoding_mid.repeat(1, z.shape[1], 1)
+            
+            # Add noise to pose_encoding_mid
+            # Randomly sample timesteps for each instance in the batch
+            t = torch.randint(0, self.diffuser.num_timesteps, (pose_encoding_mid.shape[0],), device=pose_encoding_mid.device).long()
+
+            # Sample noise
+            noise = torch.randn_like(pose_encoding_mid)
+
+            # Generate noisy pose_encoding_mid (x_t)
+            x_t = self.diffuser.q_sample(x_start=pose_encoding_mid, t=t, noise=noise)
+
+            # Perform denoising to get x0_pred
+            # Initialize x with x_t
+            x = x_t
+
+            # Iterate over timesteps in reverse
+            for step in reversed(range(self.diffuser.num_timesteps)):
+                x, _ = self.diffuser.p_sample(
+                    x=x,
+                    t=step,
+                    z=z,
+                    cond_fn=cond_fn,
+                    cond_start_step=cond_start_step
+                )
+                if step % 10 == 0:
+                    print(f"Step {step}: x shape {x.shape}")
+            # Convert the denoised pose encoding to cameras
+            pred_cameras = pose_encoding_to_camera(x, pose_encoding_type=self.pose_encoding_type)
+
+            diffusion_results = {"pred_cameras": pred_cameras, "z": z}
+
+            """ B, N, _ = z.shape
 
             target_shape = [B, N, self.target_dim]
 
@@ -138,5 +183,5 @@ class PoseDiffusionModel(nn.Module):
             pred_cameras = pose_encoding_to_camera(pose_encoding, pose_encoding_type=self.pose_encoding_type)
 
             diffusion_results = {"pred_cameras": pred_cameras, "z": z}
-
+ """
             return diffusion_results
