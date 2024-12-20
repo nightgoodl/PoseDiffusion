@@ -178,13 +178,14 @@ dependencies:
       - kiwisolver==1.4.7
       - kornia==0.7.4
       - kornia-rs==0.1.7
+      - lightglue==0.0
       - matplotlib==3.9.4
       - omegaconf==2.3.0
       - opencv-python==4.10.0.84
       - packaging==24.2
       - plotly==5.24.1
       - psutil==6.1.0
-      - pycolmap==0.4.0
+      - pycolmap==3.11.1
       - pyparsing==3.2.0
       - scipy==1.14.1
       - soupsieve==2.6
