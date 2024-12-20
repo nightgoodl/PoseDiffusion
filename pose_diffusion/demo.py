@@ -19,6 +19,8 @@ import hydra
 from hydra.utils import instantiate, get_original_cwd
 import models
 import time
+from torch.utils.data import DataLoader
+from datasets.camera import CameraParamsDataset
 from functools import partial
 from pytorch3d.renderer.cameras import PerspectiveCameras
 from pytorch3d.ops import corresponding_cameras_alignment
@@ -50,6 +52,22 @@ def demo(cfg: DictConfig) -> None:
     folder_path = os.path.join(original_cwd, cfg.image_folder)
     images, image_info = load_and_preprocess_images(folder_path, cfg.image_size)
 
+    # Load camera parameters
+
+    transforms_json_path = cfg.camera_dataloader.transforms_json
+    camera_params_dataset = CameraParamsDataset(
+        transforms_json_path=transforms_json_path,
+    )
+    camera_params_dataloader = DataLoader(
+        camera_params_dataset,
+        batch_size=cfg.camera_dataloader.camera_batch_size,
+        shuffle=False,  
+        num_workers=cfg.camera_dataloader.num_workers,
+        pin_memory=cfg.camera_dataloader.pin_memory,
+        persistent_workers=cfg.camera_dataloader.persistent_workers,
+        drop_last=cfg.camera_dataloader.drop_last,
+    )
+
     # Load checkpoint
     ckpt_path = os.path.join(original_cwd, cfg.ckpt)
     if os.path.isfile(ckpt_path):
@@ -72,6 +90,7 @@ def demo(cfg: DictConfig) -> None:
     # Start the timer
     start_time = time.time()
 
+    camera_params_iter = iter(camera_params_dataloader)
     # Perform match extraction
     if cfg.GGS.enable:
         # Optional TODO: remove the keypoints outside the cropped region?
@@ -95,6 +114,24 @@ def demo(cfg: DictConfig) -> None:
         print("[92m=====> Sampling without GGS <=====[0m")
 
     images = images.unsqueeze(0)
+    
+    try:
+        camera_params_batch = next(camera_params_iter)
+    except StopIteration:
+        raise ValueError("CameraParams DataLoader is exhausted. Ensure it has enough data.")
+    # Move camera parameters to the GPU
+    translations = camera_params_batch['T'].to(device)
+    rotations = camera_params_batch['R'].to(device)
+    fl = camera_params_batch['fl'].to(device)
+    pp = camera_params_batch['pp'].to(device)
+
+    
+    spann3r_cameras = PerspectiveCameras(
+        focal_length=fl.reshape(-1, 2),
+        R=rotations.reshape(-1, 3, 3),
+        T=translations.reshape(-1, 3),
+        device=device,
+    )
 
     # Forward
     with torch.no_grad():
@@ -105,7 +142,7 @@ def demo(cfg: DictConfig) -> None:
         # The poses and focal length are defined as
         # NDC coordinate system in
         # https://github.com/facebookresearch/pytorch3d/blob/main/docs/notes/cameras.md
-        predictions = model(image=images, cond_fn=cond_fn, cond_start_step=cfg.GGS.start_step, training=False)
+        predictions = model(image=images, cond_fn=cond_fn, cond_start_step=cfg.GGS.start_step, training=False, mid_camera=spann3r_cameras)
 
     pred_cameras = predictions["pred_cameras"]
 
