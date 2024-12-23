@@ -142,17 +142,27 @@ class PoseDiffusionModel(nn.Module):
             
             # Add noise to pose_encoding_mid
             # Randomly sample timesteps for each instance in the batch
-            t = torch.randint(0, self.diffuser.num_timesteps, (pose_encoding_mid.shape[0],), device=pose_encoding_mid.device).long()
+            num_noise_steps = int(self.diffuser.num_timesteps // 1.5)
+            x = pose_encoding_mid
 
-            # Sample noise
-            noise = torch.randn_like(pose_encoding_mid)
+            # Randomly sample timesteps for each instance in the batch
+            start_timestep = self.diffuser.num_timesteps - num_noise_steps  
+            timesteps = torch.linspace(start_timestep, self.diffuser.num_timesteps - 1, num_noise_steps, device=x.device).long()
 
-            # Generate noisy pose_encoding_mid (x_t)
-            x_t = self.diffuser.q_sample(x_start=pose_encoding_mid, t=t, noise=noise)
+            # keep the dimension
+            if len(timesteps) == 0:
+                raise ValueError(f"Generated empty timesteps sequence. num_timesteps={self.diffuser.num_timesteps}, num_noise_steps={num_noise_steps}")
 
-            # Perform denoising to get x0_pred
-            # Initialize x with x_t
-            x = x_t
+            for noise_step in range(num_noise_steps):
+                t = timesteps[noise_step:noise_step+1]  # keep the dimension
+
+                # generate noise
+                noise = torch.randn_like(x)
+
+                # add noise
+                x = self.diffuser.q_sample(x_start=x, t=t, noise=noise)
+                print(f"noise add step {noise_step+1}/{num_noise_steps}: t = {t.item()}, x shape {x.shape}")
+
 
             # Iterate over timesteps in reverse
             for step in reversed(range(self.diffuser.num_timesteps)):
@@ -170,18 +180,4 @@ class PoseDiffusionModel(nn.Module):
 
             diffusion_results = {"pred_cameras": pred_cameras, "z": z}
 
-            """ B, N, _ = z.shape
-
-            target_shape = [B, N, self.target_dim]
-
-            # sampling
-            (pose_encoding, pose_encoding_diffusion_samples) = self.diffuser.sample(
-                shape=target_shape, z=z, cond_fn=cond_fn, cond_start_step=cond_start_step
-            )
-
-            # convert the encoded representation to PyTorch3D cameras
-            pred_cameras = pose_encoding_to_camera(pose_encoding, pose_encoding_type=self.pose_encoding_type)
-
-            diffusion_results = {"pred_cameras": pred_cameras, "z": z}
- """
             return diffusion_results
