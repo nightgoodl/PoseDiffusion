@@ -142,7 +142,7 @@ class PoseDiffusionModel(nn.Module):
             
             # Add noise to pose_encoding_mid
             # Randomly sample timesteps for each instance in the batch
-            num_noise_steps = int(self.diffuser.num_timesteps // 1.5)
+            """ num_noise_steps = int(self.diffuser.num_timesteps // 10)
             x = pose_encoding_mid
 
             # Randomly sample timesteps for each instance in the batch
@@ -163,16 +163,21 @@ class PoseDiffusionModel(nn.Module):
                 x = self.diffuser.q_sample(x_start=x, t=t, noise=noise)
                 print(f"noise add step {noise_step+1}/{num_noise_steps}: t = {t.item()}, x shape {x.shape}")
 
-
+ """
+            noise = torch.randn_like(pose_encoding_mid).to(pose_encoding_mid.device)
             # Iterate over timesteps in reverse
-            for step in reversed(range(self.diffuser.num_timesteps)):
-                x, _ = self.diffuser.p_sample(
-                    x=x,
-                    t=step,
-                    z=z,
-                    cond_fn=cond_fn,
-                    cond_start_step=cond_start_step
-                )
+            for _i,step in enumerate(reversed(range(self.diffuser.num_timesteps))):
+                if _i < 10:
+                    x = self.diffuser.q_sample(x_start=pose_encoding_mid, \
+                                               t=torch.tensor(step).unsqueeze(-1).to(noise.device), noise=noise)
+                else:
+                    x, _ = self.diffuser.p_sample(
+                        x=x,
+                        t=step,
+                        z=z,
+                        cond_fn=cond_fn,
+                        cond_start_step=cond_start_step
+                    )
                 if step % 10 == 0:
                     print(f"Step {step}: x shape {x.shape}")
             # Convert the denoised pose encoding to cameras
