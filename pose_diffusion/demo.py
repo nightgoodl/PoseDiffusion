@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Union
 from omegaconf import OmegaConf, DictConfig
 import hydra
 from hydra.utils import instantiate, get_original_cwd
+import visdom
 import models
 import time
 from torch.utils.data import DataLoader
@@ -125,14 +126,22 @@ def demo(cfg: DictConfig) -> None:
     fl = camera_params_batch['fl'].to(device)
     pp = camera_params_batch['pp'].to(device)
 
-    
+    # Left-handed coordinate system
+    rotations_lh = rotations.clone()
+    rotations_lh[:, 2, :] *= -1  
+    rotations_lh[:, :, 2] *= -1  
+
+    translations_lh = translations.clone()
+    translations_lh[:, 2] *= -1   
+
     spann3r_cameras = PerspectiveCameras(
-        focal_length=fl.reshape(-1, 2),
-        R=rotations.reshape(-1, 3, 3),
-        T=translations.reshape(-1, 3),
+        focal_length=fl.reshape(-1, 2)/100,
+        R=rotations_lh.reshape(-1, 3, 3),
+        T=translations_lh.reshape(-1, 3),
         device=device,
     )
-
+    
+    
     # Forward
     with torch.no_grad():
         # Obtain predicted camera parameters
@@ -145,7 +154,7 @@ def demo(cfg: DictConfig) -> None:
         predictions = model(image=images, cond_fn=cond_fn, cond_start_step=cfg.GGS.start_step, training=False, mid_camera=spann3r_cameras)
 
     pred_cameras = predictions["pred_cameras"]
-
+    print(pred_cameras.T)
     # Stop the timer and calculate elapsed time
     end_time = time.time()
     elapsed_time = end_time - start_time
@@ -164,7 +173,10 @@ def demo(cfg: DictConfig) -> None:
         pred_cameras_aligned = corresponding_cameras_alignment(
             cameras_src=pred_cameras, cameras_tgt=gt_cameras, estimate_scale=True, mode="extrinsics", eps=1e-9
         )
-
+        # spann3r alignment
+        spann3r_cameras_aligned = corresponding_cameras_alignment(
+            cameras_src=spann3r_cameras, cameras_tgt=gt_cameras, estimate_scale=True, mode="extrinsics", eps=1e-9
+        )
         # Compute the absolute rotation error
         ARE = compute_ARE(pred_cameras_aligned.R, gt_cameras.R).mean()
         print(f"For {folder_path}: the absolute rotation error is {ARE:.6f} degrees.")
@@ -174,13 +186,13 @@ def demo(cfg: DictConfig) -> None:
 
     # Visualization
     try:
-        viz = Visdom()
+        viz = visdom.Visdom(env='posediffusion')
 
-        cams_show = {"ours_pred": pred_cameras, "ours_pred_aligned": pred_cameras_aligned, "gt_cameras": gt_cameras}
+        cams_show = {"ours_pred": pred_cameras, "ours_pred_aligned": pred_cameras_aligned, "gt_cameras": gt_cameras, "spann3r_cameras": spann3r_cameras, "spann3r_cameras_aligned": spann3r_cameras_aligned}
 
         fig = plot_scene({f"{folder_path}": cams_show})
 
-        viz.plotlyplot(fig, env="visual", win="cams")
+        viz.plotlyplot(fig, env="posediffusion", win="cams")
     except:
         print("Please check your visdom connection")
 
