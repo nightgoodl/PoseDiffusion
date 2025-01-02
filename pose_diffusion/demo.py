@@ -126,21 +126,13 @@ def demo(cfg: DictConfig) -> None:
     fl = camera_params_batch['fl'].to(device)
     pp = camera_params_batch['pp'].to(device)
 
-    # Left-handed coordinate system
-    rotations_lh = rotations.clone()
-    rotations_lh[:, 2, :] *= -1  
-    rotations_lh[:, :, 2] *= -1  
-
-    translations_lh = translations.clone()
-    translations_lh[:, 2] *= -1   
-
     spann3r_cameras = PerspectiveCameras(
         focal_length=fl.reshape(-1, 2)/100,
-        R=rotations_lh.reshape(-1, 3, 3),
-        T=translations_lh.reshape(-1, 3),
+        R=rotations.reshape(-1, 3, 3),
+        T=translations.reshape(-1, 3),
         device=device,
     )
-    
+
     
     # Forward
     with torch.no_grad():
@@ -173,10 +165,7 @@ def demo(cfg: DictConfig) -> None:
         pred_cameras_aligned = corresponding_cameras_alignment(
             cameras_src=pred_cameras, cameras_tgt=gt_cameras, estimate_scale=True, mode="extrinsics", eps=1e-9
         )
-        # spann3r alignment
-        spann3r_cameras_aligned = corresponding_cameras_alignment(
-            cameras_src=spann3r_cameras, cameras_tgt=gt_cameras, estimate_scale=True, mode="extrinsics", eps=1e-9
-        )
+
         # Compute the absolute rotation error
         ARE = compute_ARE(pred_cameras_aligned.R, gt_cameras.R).mean()
         print(f"For {folder_path}: the absolute rotation error is {ARE:.6f} degrees.")
@@ -188,7 +177,7 @@ def demo(cfg: DictConfig) -> None:
     try:
         viz = visdom.Visdom(env='posediffusion')
 
-        cams_show = {"ours_pred": pred_cameras, "ours_pred_aligned": pred_cameras_aligned, "gt_cameras": gt_cameras, "spann3r_cameras": spann3r_cameras, "spann3r_cameras_aligned": spann3r_cameras_aligned}
+        cams_show = {"ours_pred": pred_cameras, "ours_pred_aligned": pred_cameras_aligned, "gt_cameras": gt_cameras, "spann3r_cameras": spann3r_cameras}
 
         fig = plot_scene({f"{folder_path}": cams_show})
 

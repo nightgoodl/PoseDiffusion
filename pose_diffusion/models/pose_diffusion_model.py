@@ -167,7 +167,7 @@ class PoseDiffusionModel(nn.Module):
             noise = torch.randn_like(pose_encoding_mid).to(pose_encoding_mid.device)
             # Iterate over timesteps in reverse
             for _i,step in enumerate(reversed(range(self.diffuser.num_timesteps))):
-                if _i < 10:
+                if _i < 30:
                     x = self.diffuser.q_sample(x_start=pose_encoding_mid, \
                                                t=torch.tensor(step).unsqueeze(-1).to(noise.device), noise=noise)
                 else:
@@ -178,8 +178,6 @@ class PoseDiffusionModel(nn.Module):
                         cond_fn=cond_fn,
                         cond_start_step=cond_start_step
                     )
-                if step % 10 == 0:
-                    print(f"Step {step}: x shape {x.shape}")
             # Convert the denoised pose encoding to cameras
             pred_cameras = pose_encoding_to_camera(x, pose_encoding_type=self.pose_encoding_type)
 
